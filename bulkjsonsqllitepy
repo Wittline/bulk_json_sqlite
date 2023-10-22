@@ -1,0 +1,86 @@
+import ijson
+import sqlite3
+
+class BulkJsonSqlLite:
+
+    def __init__(self, path, cols, db, table):
+        self.path = path
+        self.bulk_chunk = []        
+        self.db = db
+        self.columns = cols
+        self.metadata = ','.join([ k.replace(".", "_") + ' ' + v for k, v in self.columns.items()])
+        self.dest_table = table
+
+    
+    def __get_deep_value(self, item, column):
+
+        keys = column.split('.')
+        result = item
+        for key in keys:
+            if isinstance(result, dict) and key in result:
+                result = result[key]
+            elif isinstance(result, list):                
+                new_result = []
+                for item in result:
+                    if isinstance(item, dict) and key in item:
+                        new_result.append(item[key])
+                if new_result:
+                    result = new_result
+                else:
+                    return None
+            else:
+                return None
+        return str(result)
+                    
+
+    def __bulkUpload(self):
+        
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                    'CREATE TABLE IF NOT EXISTS ' + self.dest_table + '(' +  self.metadata +  ')')                        
+        try:
+            with sqlite3.connect(self.db) as conn:
+                conn.executemany('INSERT INTO ' + self.dest_table + ' VALUES (' + ','.join([ '?' for k in self.columns]) + ')', self.bulk_chunk)
+        except Exception as e:
+            print('Error inserting values:', e)
+
+        self.bulk_chunk = self.bulk_chunk[:0]
+
+    
+    def check_db(self):        
+        with sqlite3.connect(self.db) as conn:
+            rows = conn.execute('SELECT * FROM ' + self.dest_table)    
+            for row in rows:
+                print(row)
+
+    def bulk_json(self, chunk_size = 4):            
+
+        with open(self.path, 'r') as file:
+
+            items = ijson.items(file, 'item')
+
+            for item in items:
+                tpl = []
+                for column_name in self.columns: 
+                    tpl.append(self.__get_deep_value(item, column_name))
+                
+                tpl = tuple(tpl)
+                
+                if len(self.bulk_chunk) < chunk_size:
+                                       
+                    self.bulk_chunk.append(tpl)
+                else:
+                    self.__bulkUpload()     
+                    self.bulk_chunk.append(tpl)
+            
+            self.__bulkUpload()
+
+# path_json = "/content/events.json"
+# cols = {"id": "TEXT", "type": "TEXT", "actor.id": "TEXT", "actor.login": "TEXT", "payload.commits.author.email": "TEXT"}
+# db = "/content/data.db"
+# destination_table = "Events"
+
+
+# rw = BulkJsonSqlLite(path_json, cols, db, destination_table)
+# rw.bulk_json(chunk_size= 4)
+# rw.check_db()            
