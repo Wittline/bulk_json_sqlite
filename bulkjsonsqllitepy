@@ -13,7 +13,6 @@ class BulkJsonSqlLite:
 
     
     def __get_deep_value(self, item, column):
-
         keys = column.split('.')
         result = item
         for key in keys:
@@ -66,8 +65,7 @@ class BulkJsonSqlLite:
                 
                 tpl = tuple(tpl)
                 
-                if len(self.bulk_chunk) < chunk_size:
-                                       
+                if len(self.bulk_chunk) < chunk_size:                                       
                     self.bulk_chunk.append(tpl)
                 else:
                     self.__bulkUpload()     
